@@ -1219,9 +1219,21 @@ async def show_bookings_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
     bookings_list = '📊 BOOKINGS MANAGEMENT 📊\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n'
 
     for i, booking in enumerate(bookings, 1):
-        username_display = f"@{booking.get('student_username', 'No username')}" if booking.get('student_username') != "No username set" else "❌ No username"
+        try:
+            username_display = f"@{booking.get('student_username', 'No username')}" if booking.get('student_username') != "No username set" else "❌ No username"
+            
+            # Handle timestamp formatting safely
+            timestamp_str = "Unknown"
+            if 'timestamp' in booking:
+                try:
+                    # Parse ISO timestamp string to datetime object
+                    from datetime import datetime
+                    timestamp_obj = datetime.fromisoformat(booking['timestamp'].replace('Z', '+00:00'))
+                    timestamp_str = timestamp_obj.strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    timestamp_str = booking['timestamp'][:19] if len(booking['timestamp']) >= 19 else booking['timestamp']
 
-        bookings_list += f"""📋 Booking #{i}
+            bookings_list += f"""📋 Booking #{i}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 👤 STUDENT INFO:
@@ -1231,7 +1243,7 @@ async def show_bookings_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 💃 MODEL: {booking['teacher_name']}
 💰 PRICE: ${booking['price']}
-📅 DATE: {booking['created_at'].strftime('%Y-%m-%d %H:%M:%S')}
+📅 DATE: {timestamp_str}
 🔄 STATUS: {booking['status']}
 
 🆔 Booking ID: {booking['id']}
@@ -1239,6 +1251,9 @@ async def show_bookings_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 """
+        except Exception as e:
+            logger.error(f"Error displaying booking {i}: {e}")
+            bookings_list += f"📋 Booking #{i}: ❌ Error displaying booking data\n\n"
 
     await context.bot.send_message(chat_id, bookings_list)
 
@@ -1257,20 +1272,33 @@ async def show_pending_payments(update: Update, context: ContextTypes.DEFAULT_TY
     payments_list = '💰 PENDING PAYMENTS 💰\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n'
 
     for booking_id, booking in pending_payments.items():
-        username_display = f"@{booking.get('student_username', 'No username')}" if booking.get('student_username') != "No username set" else "❌ No username"
+        try:
+            username_display = f"@{booking.get('student_username', 'No username')}" if booking.get('student_username') != "No username set" else "❌ No username"
+            
+            # Handle timestamp formatting safely
+            timestamp_str = "Unknown"
+            if 'timestamp' in booking:
+                try:
+                    # The timestamp in pending_payments is already formatted as string
+                    timestamp_str = booking['timestamp']
+                except:
+                    timestamp_str = "Unknown"
 
-        payments_list += f"""💳 Payment #{booking_id}
+            payments_list += f"""💳 Payment #{booking_id}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 👤 USER: {booking.get('student_name', 'Unknown')}
 🏷️ USERNAME: {username_display}
 💃 MODEL: {booking['teacher_name']}
 💰 AMOUNT: ${booking['price']}
-📅 DATE: {booking['created_at'].strftime('%Y-%m-%d %H:%M:%S')}
+📅 DATE: {timestamp_str}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 """
+        except Exception as e:
+            logger.error(f"Error displaying pending payment {booking_id}: {e}")
+            payments_list += f"💳 Payment #{booking_id}: ❌ Error displaying payment data\n\n"
 
     keyboard = []
     for booking_id in pending_payments.keys():
