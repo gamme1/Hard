@@ -971,7 +971,7 @@ Ready to start your journey? 🚀"""
     ]
     
     reply_markup = create_inline_keyboard(keyboard)
-    await context.bot.send_message(chat_id, support_message, reply_markup=reply_markup)
+    await context.bot.send_message(chat_id, become_model_message, reply_markup=reply_markup)
 
 # Admin functions for point management
 async def manage_point_prices(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1716,6 +1716,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 'booking_id': booking_id,
                 'student_id': user_id,
                 'student_username': user.username or user.first_name,
+                'student_name': booking.get('student_name', 'Unknown'),
                 'teacher_name': booking['teacher_name'],
                 'price': booking['price'],
                 'photo_file_id': photo.file_id,

@@ -231,6 +231,7 @@ def get_enhanced_photo_handler_code():
                 'booking_id': booking_id,
                 'student_id': user_id,
                 'student_username': user.username or user.first_name,
+                'student_name': booking.get('student_name', 'Unknown'),
                 'teacher_name': booking['teacher_name'],
                 'price': booking['price'],
                 'photo_file_id': photo.file_id,
