@@ -42,7 +42,8 @@ TEACHER_EDIT_STATES = {
     'WAITING_FOR_NEW_TEACHER': 'waiting_for_new_teacher',
     'WAITING_FOR_POINT_PRICE': 'waiting_for_point_price',
     'WAITING_FOR_TRANSFER_USER': 'waiting_for_transfer_user',
-    'WAITING_FOR_TRANSFER_AMOUNT': 'waiting_for_transfer_amount'
+    'WAITING_FOR_TRANSFER_AMOUNT': 'waiting_for_transfer_amount',
+    'WAITING_FOR_PAYMENT_PROOF': 'waiting_for_payment_proof'
 }
 
 # Initialize sample teacher data
@@ -1635,14 +1636,37 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             
             del teacher_edit_states[user_id]
         
+        elif state['state'] == TEACHER_EDIT_STATES['WAITING_FOR_PAYMENT_PROOF']:
+            # Handle payment proof upload
+            booking_id = state['booking_id']
+            photo = update.message.photo[-1]  # Get the highest resolution photo
+            file = await context.bot.get_file(photo.file_id)
+            
+            await context.bot.send_message(
+                chat_id,
+                f"✅ **PAYMENT PROOF RECEIVED!**\n\n"
+                f"🆔 Booking ID: `{booking_id}`\n"
+                f"📸 Photo File ID: `{photo.file_id}`\n\n"
+                f"🔄 Your payment proof has been submitted for verification.\n"
+                f"⏳ Please wait while our admin reviews your payment.\n\n"
+                f"📞 For urgent queries, contact: @G_king123f\n\n"
+                f"✨ You will be notified once your payment is confirmed!"
+            )
+            
+            # Notify admin about new payment proof (if admin functionality exists)
+            # You could add admin notification here if needed
+            
+            # Clear the state
+            del teacher_edit_states[user_id]
+        
         else:
             await context.bot.send_message(chat_id, "📸 Photo received, but I'm not sure what to do with it. Please try again.")
     
     else:
-        # Handle payment proof photos
+        # Handle payment proof photos (fallback for direct photo uploads)
         await context.bot.send_message(
             chat_id,
-            "📸 Payment proof received! Please forward this to the admin for verification.\n\n📞 Contact: @G_king123f"
+            "📸 Payment proof received! Please use the 'Upload Payment Proof' button from your booking to properly submit payment verification.\n\n📞 Contact: @G_king123f"
         )
 
 # Callback query handler
@@ -1751,6 +1775,30 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         elif data.startswith('reject_payment_'):
             booking_id = data.split('_')[2]
             await handle_reject_payment(update, context, booking_id)
+        elif data.startswith('upload_payment_'):
+            booking_id = data.split('_')[2]
+            # Set user state to expect payment proof photo for this booking
+            teacher_edit_states[user.id] = {
+                'state': TEACHER_EDIT_STATES['WAITING_FOR_PAYMENT_PROOF'],
+                'booking_id': booking_id
+            }
+            await context.bot.send_message(
+                chat_id,
+                f"📸 **UPLOAD PAYMENT PROOF**\n\n"
+                f"🆔 Booking ID: `{booking_id}`\n\n"
+                f"📤 Please send your Bitcoin payment proof screenshot now.\n\n"
+                f"✅ Accepted formats: Photo/Screenshot\n"
+                f"⚠️ Make sure the payment amount and transaction details are clearly visible."
+            )
+        elif data.startswith('cancel_booking_'):
+            booking_id = data.split('_')[2]
+            await context.bot.send_message(
+                chat_id,
+                f"❌ **BOOKING CANCELLED**\n\n"
+                f"🆔 Booking ID: `{booking_id}`\n\n"
+                f"Your booking has been cancelled. If you made a payment, please contact support.\n\n"
+                f"📞 Contact: @G_king123f"
+            )
         elif data.startswith('edit_field_'):
             parts = data.split('_')
             field = parts[2]
