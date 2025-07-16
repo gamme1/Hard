@@ -1445,6 +1445,35 @@ async def handle_reject_payment(update: Update, context: ContextTypes.DEFAULT_TY
         f"❌ Payment rejected for booking {booking_id}!"
     )
 
+async def handle_upload_payment_proof(update: Update, context: ContextTypes.DEFAULT_TYPE, booking_id: str) -> None:
+    user = update.effective_user
+    chat_id = update.effective_chat.id
+    user_id = user.id
+
+    # Check if booking exists
+    booking = next((b for b in bookings if b['id'] == booking_id), None)
+    if not booking:
+        await context.bot.send_message(chat_id, '❌ Booking not found.')
+        return
+
+    # Check if user is the owner of this booking
+    if booking['student_id'] != user_id:
+        await context.bot.send_message(chat_id, '❌ You can only upload payment proof for your own bookings.')
+        return
+
+    # Set user state to expect payment proof photo
+    user_states[user_id] = user_states.get(user_id, {})
+    user_states[user_id]['waiting_for_payment_proof'] = booking_id
+
+    await context.bot.send_message(
+        chat_id,
+        f"📤 UPLOAD PAYMENT PROOF\n\n"
+        f"🆔 Booking ID: {booking_id}\n"
+        f"💰 Amount: ${booking['price']}\n"
+        f"📝 Please send a screenshot of your Bitcoin payment transaction.\n\n"
+        f"📸 Send the image now:"
+    )
+
 async def handle_edit_field(update: Update, context: ContextTypes.DEFAULT_TYPE, field: str, teacher_id: int) -> None:
     user = update.effective_user
     chat_id = update.effective_chat.id
@@ -1639,11 +1668,83 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await context.bot.send_message(chat_id, "📸 Photo received, but I'm not sure what to do with it. Please try again.")
     
     else:
-        # Handle payment proof photos
-        await context.bot.send_message(
-            chat_id,
-            "📸 Payment proof received! Please forward this to the admin for verification.\n\n📞 Contact: @G_king123f"
-        )
+        # Check if user is waiting to upload payment proof
+        if user_id in user_states and 'waiting_for_payment_proof' in user_states[user_id]:
+            booking_id = user_states[user_id]['waiting_for_payment_proof']
+            
+            # Get the photo file
+            photo = update.message.photo[-1]  # Get the highest resolution photo
+            file = await context.bot.get_file(photo.file_id)
+            
+            # Get booking details
+            booking = next((b for b in bookings if b['id'] == booking_id), None)
+            if not booking:
+                await context.bot.send_message(chat_id, '❌ Booking not found.')
+                del user_states[user_id]['waiting_for_payment_proof']
+                return
+            
+            # Store payment proof in pending payments
+            pending_payments[booking_id] = {
+                'booking_id': booking_id,
+                'student_id': user_id,
+                'student_username': user.username or user.first_name,
+                'teacher_name': booking['teacher_name'],
+                'price': booking['price'],
+                'photo_file_id': photo.file_id,
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+            
+            # Update booking status
+            for b in bookings:
+                if b['id'] == booking_id:
+                    b['status'] = 'payment_submitted'
+                    break
+            
+            # Clear the waiting state
+            del user_states[user_id]['waiting_for_payment_proof']
+            
+            # Confirm to user
+            await context.bot.send_message(
+                chat_id,
+                f"✅ Payment proof uploaded successfully!\n\n"
+                f"🆔 Booking ID: {booking_id}\n"
+                f"⏳ Your payment is now being reviewed by our admin team.\n"
+                f"📧 You'll receive confirmation within 5-10 minutes.\n\n"
+                f"📞 Support: {ADMIN_USERNAME}"
+            )
+            
+            # Notify admin
+            admin_message = f"💳 NEW PAYMENT PROOF RECEIVED\n\n"
+            admin_message += f"🆔 Booking ID: {booking_id}\n"
+            admin_message += f"👤 Student: @{user.username or user.first_name} (ID: {user_id})\n"
+            admin_message += f"💃 Model: {booking['teacher_name']}\n"
+            admin_message += f"💰 Amount: ${booking['price']}\n"
+            admin_message += f"⏰ Submitted: {pending_payments[booking_id]['timestamp']}\n"
+            
+            keyboard = [
+                [InlineKeyboardButton("✅ Confirm Payment", callback_data=f"confirm_payment_{booking_id}")],
+                [InlineKeyboardButton("❌ Reject Payment", callback_data=f"reject_payment_{booking_id}")]
+            ]
+            reply_markup = create_inline_keyboard(keyboard)
+            
+            # Send notification to all admins
+            for admin_id in ADMIN_IDS:
+                try:
+                    await context.bot.send_photo(
+                        admin_id,
+                        photo=photo.file_id,
+                        caption=admin_message,
+                        reply_markup=reply_markup
+                    )
+                except:
+                    pass  # Admin might have blocked bot
+        
+        else:
+            # Handle generic payment proof photos
+            await context.bot.send_message(
+                chat_id,
+                "📸 Payment proof received! Please forward this to the admin for verification.\n\n📞 Contact: @G_king123f"
+            )
 
 # Callback query handler
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1764,6 +1865,9 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 keyboard.append([InlineKeyboardButton("🔙 Back", callback_data='manage_teachers')])
                 reply_markup = create_inline_keyboard(keyboard)
                 await context.bot.send_message(chat_id, '🗑️ Remove Teachers:', reply_markup=reply_markup)
+        elif data.startswith('upload_payment_'):
+            booking_id = data.split('_')[2]
+            await handle_upload_payment_proof(update, context, booking_id)
         else:
             # Unknown callback data
             await context.bot.send_message(chat_id, "❌ Unknown action. Please try again.")
